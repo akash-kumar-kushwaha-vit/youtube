@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken"
 import bcrypt, { hash } from "bcrypt"
 
 const userSchema = new mongoose.Schema({
-    user: {
+    username: {
         type: String,
         required: true,
         unique: true,
@@ -42,10 +42,14 @@ const userSchema = new mongoose.Schema({
 
 
 userSchema.pre("save", async function (next) {
-    if (!this.isModified("password")) return next();
+    if (!this.isModified("password")) return;
     this.password = await hash(this.password, 10)
-    next()
-})
+
+});
+
+userSchema.methods.isPasswordCorrect = async function (password) {
+    return await bcrypt.compare(password, this.password)
+}
 
 userSchema.methods.generateAccessToken = function () {
     return jwt.sign({
