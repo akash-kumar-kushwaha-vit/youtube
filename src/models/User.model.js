@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken"
 import bcrypt, { hash } from "bcrypt"
-import { use } from "react";
+
 const userSchema = new mongoose.Schema({
     user: {
         type: String,
@@ -41,14 +41,14 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true })
 
 
-userSchema.pre("save", function (next) {
+userSchema.pre("save", async function (next) {
     if (!this.isModified("password")) return next();
-    this.password = hash(this.password, 10)
+    this.password = await hash(this.password, 10)
     next()
 })
 
-userSchema.method.AccessTokenGenerate = function () {
-    const token = jwt.sign({
+userSchema.methods.generateAccessToken = function () {
+    return jwt.sign({
         _id: this._id,
         user: this.user,
         fullName: this.fullName,
@@ -58,19 +58,17 @@ userSchema.method.AccessTokenGenerate = function () {
             expiresIn: process.env.ACCESS_TOKEN_EXPIRY
         }
     )
-    return token
 }
 
-userSchema.method.RefreshTokenGenerate = function () {
-    const token = jwt.sign({
+userSchema.methods.generateRefreshToken = function () {
+    return jwt.sign({
         _id: this._id,
     },
-        process.env.REFRESS_TOKEN,
+        process.env.REFRESS_TOKEN_SECRET,
         {
             expiresIn: process.env.REFRESS_TOKEN_EXPIRY
         }
     )
-    return token
 }
 
 
