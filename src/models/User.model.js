@@ -36,6 +36,9 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Video",
     }],
+    REFRESH_TOKEN: {
+        type: String,
+    }
 
 
 }, { timestamps: true })
@@ -56,6 +59,7 @@ userSchema.methods.generateAccessToken = function () {
         _id: this._id,
         user: this.user,
         fullName: this.fullName,
+        password: this.password,
     },
         process.env.ACCESS_TOKEN,
         {
