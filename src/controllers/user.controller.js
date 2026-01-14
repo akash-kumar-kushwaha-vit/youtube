@@ -4,21 +4,17 @@ import { ApiError } from "../utils/apiError.js"
 import uploadCloudinary from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from "jsonwebtoken"
+import mongoose from "mongoose";
 
 
-const generateAccessTokenAndrefreshToken = asyncHandler(async (userId) => {
-    try {
-        const user = await User.findById(userId)
-        const accessToken = user.generateAccessToken();
-        const refreshToken = user.generateRefreshToken();
-        user.REFRESH_TOKEN = refreshToken;
-        await user.save({ validateBeforeSave: false });
-        return { accessToken, refreshToken };
-    } catch (error) {
-        throw new ApiError(500, "something wrong during genreting tokens")
-    }
-
-})
+const generateAccessTokenAndrefreshToken = async (userId) => {
+    const user = await User.findById(userId)
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+    user.REFRESH_TOKEN = refreshToken;
+    await user.save({ validateBeforeSave: false });
+    return { accessToken, refreshToken };
+}
 
 
 const register = asyncHandler(async (req, res) => {
@@ -121,6 +117,7 @@ const logout = asyncHandler(async (req, res) => {
 
 })
 
+
 const refreshaccessToken = asyncHandler(async (req, res) => {
     const incomingrefreshToken = req.cookies.REFRESH_TOKEN;
     if (!incomingrefreshToken) {
@@ -133,8 +130,7 @@ const refreshaccessToken = asyncHandler(async (req, res) => {
         throw new ApiError(401, "invalid accesstoken")
     }
 
-    const decodedrefreshToken = jwt.verify(incomingrefreshToken, user.REFRESH_TOKEN);
-    if (decodedrefreshToken !== user.REFRESH_TOKEN) {
+    if (incomingrefreshToken !== user.REFRESH_TOKEN) {
         throw new ApiError(401, "invalid accesstoken check again")
     }
 
@@ -153,4 +149,152 @@ const refreshaccessToken = asyncHandler(async (req, res) => {
 
 
 })
-export { register, login, logout, refreshaccessToken }
+
+const updateUserPassword = asyncHandler(async (req, res) => {
+    // find user 
+    // change password
+    // save it
+    const { newpassword, oldpassword } = req.body;
+    const upadteuser = await User.findById(req.user?._id);
+    if (!upadteuser) {
+        throw new ApiError(500, "something went wrong during updating the password");
+    }
+    const iscorrectpassword = await upadteuser.isPasswordCorrect(oldpassword);
+    if (!iscorrectpassword) {
+        throw new ApiError(404, "invalid password");
+    }
+    upadteuser.password = newpassword;
+    await upadteuser.save({ validateBeforeSave: false });
+    res.status(201).json(
+        new ApiResponse(200, {}, "upadate password successfully!")
+    )
+
+})
+
+const updateavtar = asyncHandler(async (req, res) => {
+    const avtarlocalpath = req.files?.avtar[0]?.path
+    if (!avtarlocalpath) throw new ApiError(403, "file upload are faild registration localpath missing")
+    console.log(avtarlocalpath)
+    const avtar = await uploadCloudinary(avtarlocalpath);
+    if (!avtar) throw new ApiError(403, "file upload are faild registration")
+    const user = await User.findByIdAndUpdate(
+        req.user._id,
+        { avtar: avtar.url }
+    )
+
+    res.status(200).json(
+        new ApiResponse(200, { avtar }, "avtar updated successfully")
+    )
+
+})
+
+
+const getUserchannelsProfile = asyncHandler(async (req, res) => {
+    //get user
+    const user = req.params.username;
+    if (!user) {
+        throw new ApiError(404, "user not found")
+    }
+    const channels = await User.aggregate([
+        {
+            $match: { username: req.params.username }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribersofchannel"
+
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedchannels"
+
+            }
+        },
+        {
+            $addFields: {
+                totalSubscribers: { $size: "$subscribersofchannel" },
+                totalSubscribedChannels: { $size: "$subscribedchannels" },
+                issubscribed: { $cond: { if: { $in: [new mongoose.Types.ObjectId(req.user._id), "$subscribersofchannel.subscriber"] }, then: true, else: false } }
+            }
+        }, {
+            $project: {
+                totalSubscribers: 1,
+                totalSubscribedChannels: 1,
+                issubscribed: 1,
+                username: 1,
+                fullName: 1,
+                avtar: 1,
+                createdAt: 1,
+            }
+        }
+    ])
+    if (!channels?.length) {
+        throw new ApiError(404, "channels not found")
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, channels[0], "channels profile fetched successfully")
+    )
+
+})
+
+const watchHistory = asyncHandler(async (req, res) => {
+    //get user watch history
+    const history = await User.aggregate([
+        {
+            $match: { _id: new mongoose.Types.ObjectId(req.user._id) }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "history",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                        }
+                    },
+                    {
+                        $addFields: {
+                            owner: { $arrayElemAt: ["$owner", 0] },
+                        }
+                    }, {
+                        $project: {
+                            _id: 1,
+                            username: 1,
+                            owner: 1,
+                            fullName: 1,
+                            avtar: 1,
+
+                        }
+                    }
+                ]
+            },
+        }, {
+            $project: {
+                watchHistory: 1,
+
+
+            }
+        }
+
+
+
+    ])
+    return res.status(200).json(
+        new ApiResponse(200, history[0], "watch history fetched successfully")
+    )
+})
+export { register, login, logout, refreshaccessToken, updateUserPassword, updateavtar, getUserchannelsProfile, watchHistory }

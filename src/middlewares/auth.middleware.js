@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 const verifyJwt = asyncHandler(async (req, _, next) => {
     try {
         const token = req.cookies?.ACCESS_TOKEN || req.headers?.authorization?.split(" ")[1];
-        if (!user) {
+        if (!token) {
             throw new ApiError(401, "access denied, please login")
 
         }
